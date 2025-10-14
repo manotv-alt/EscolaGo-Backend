@@ -1,5 +1,6 @@
 import os
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
@@ -13,6 +14,14 @@ supabase: Client = create_client(url, key)
 
 # Inicializa o aplicativo FastAPI
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/api")
 def read_root():
@@ -49,7 +58,7 @@ def get_total_data():
         if response.data:
             return {"status": "success", "data": response.data[0]}
         else:
-            raise HTTPException(status_code=404, detail="Escola não encontrada")
+            raise HTTPException(status_code=404, detail="Dados não encontrados")
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
