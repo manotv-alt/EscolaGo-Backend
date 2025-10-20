@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from supabase import create_client, Client
 from dotenv import load_dotenv
@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 url: str = os.environ.get("SUPABASE_URL")
 key: str = os.environ.get("SUPABASE_KEY")
+SECRET_TOKEN = os.environ.get("SECRET_TOKEN")
 
 # Cria o cliente Supabase
 supabase: Client = create_client(url, key)
@@ -60,5 +61,25 @@ def get_total_data():
         else:
             raise HTTPException(status_code=404, detail="Dados não encontrados")
     
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@app.post("/api/Escolas/{school_id}")
+def update_school(school_id: int, school_data: dict, authorization: str = Header(...)):
+    try:
+        if not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Token inválido ou ausente")
+        
+        token = authorization.split("Bearer ")[1]
+        if token != SECRET_TOKEN:
+            raise HTTPException(status_code=403, detail="Acesso negado")
+        
+        response = supabase.table('DadosEscolas').update(school_data).eq("Id", school_id).execute()
+        
+        if response.data:
+            return {"status": "success", "data": response.data[0]}
+        else:
+            raise HTTPException(status_code=404, detail="Escola não encontrada")
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
