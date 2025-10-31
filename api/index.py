@@ -31,7 +31,7 @@ def read_root():
 @app.get("/api/Escolas")
 def get_schools():
     try:
-        response = supabase.table('DadosEscolas').select("Id, Nome, Municipio").execute()
+        response = supabase.table('DadosEscolas').select("Id, Nome, Municipio").limit(1100).execute()
         
         return {"status": "success", "data": response.data}
     
@@ -65,7 +65,7 @@ def get_total_data():
         raise HTTPException(status_code=500, detail=str(e))
     
 @app.post("/api/Escolas/{school_id}")
-def update_school(school_id: int, school_data: dict, authorization: str = Header(...)):
+def update_school(school_id: str, school_data: dict, authorization: str = Header(...)):
     try:
         if not authorization.startswith("Bearer "):
             raise HTTPException(status_code=401, detail="Token inválido ou ausente")
@@ -74,7 +74,20 @@ def update_school(school_id: int, school_data: dict, authorization: str = Header
         if token != SECRET_TOKEN:
             raise HTTPException(status_code=403, detail="Acesso negado")
         
+        print(f"school_id recebido: {school_id}")
+        print(f"school_data recebido: {school_data}")
+        
+        check_response = supabase.table('DadosEscolas').select("*").eq("Id", school_id).execute()
+        print(f"Verificação de existência: {check_response.data}")
+
+        if not check_response.data:
+            raise HTTPException(status_code=404, detail="Escola não encontrada para atualização")
+        
+        if "investimento_ano_atual" in school_data:
+            school_data["investimento_ano_atual"] = float(school_data["investimento_ano_atual"])
+        
         response = supabase.table('DadosEscolas').update(school_data).eq("Id", school_id).execute()
+        print(f"Resposta do Supabase: {response}")
         
         if response.data:
             return {"status": "success", "data": response.data[0]}
@@ -82,4 +95,5 @@ def update_school(school_id: int, school_data: dict, authorization: str = Header
             raise HTTPException(status_code=404, detail="Escola não encontrada")
 
     except Exception as e:
+        print(f"Erro: {e}")
         raise HTTPException(status_code=500, detail=str(e))
