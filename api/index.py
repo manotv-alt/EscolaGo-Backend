@@ -1,4 +1,5 @@
 import os
+import resend
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from supabase import create_client, Client
@@ -9,6 +10,7 @@ load_dotenv()
 url: str = os.environ.get("SUPABASE_URL")
 key: str = os.environ.get("SUPABASE_KEY")
 SECRET_TOKEN = os.environ.get("SECRET_TOKEN")
+resend.api_key = os.environ.get("EMAIL_KEY")
 
 # Cria o cliente Supabase
 supabase: Client = create_client(url, key)
@@ -96,4 +98,53 @@ def update_school(school_id: str, school_data: dict, authorization: str = Header
 
     except Exception as e:
         print(f"Erro: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/SendEmail")
+def send_email(email_data: dict, authorization: str = Header(...)):
+    try:
+        if not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Token inválido ou ausente")
+        
+        token = authorization.split("Bearer ")[1]
+        if token != SECRET_TOKEN:
+            raise HTTPException(status_code=403, detail="Acesso negado")
+
+        # Validar dados recebidos
+        name = email_data.get("name")
+        email = email_data.get("email")
+        subject = email_data.get("subject")
+        message = email_data.get("message")
+
+        if not all([name, email, subject, message]):
+             raise HTTPException(status_code=400, detail="Campos obrigatórios ausentes: name, email, subject, message")
+
+        formatted_message = message.replace('\n', '<br>')
+        
+        # Construir o HTML do e-mail
+        html_content = f"""
+            <p><strong>Nome:</strong> {name}</p>
+            <p><strong>Email (para resposta):</strong> {email}</p>
+            <p><strong>Assunto:</strong> {subject}</p>
+            <hr>
+            <p><strong>Mensagem:</strong></p>
+            <p>{formatted_message}</p>
+        """
+        
+        # Preparar e enviar o e-mail via Resend
+        params = {
+            "from": "Formulário de Contato <onboarding@resend.dev>",
+            "to": ["emmanuelcontatocomercial@gmail.com"],
+            "subject": f"Nova Mensagem (EscolaGO): {subject}",
+            "reply_to": email,
+            "html": html_content,
+        }
+        
+        email_response = resend.Emails.send(params)
+
+        # Retornar sucesso
+        return {"status": "success", "data": email_response}
+
+    except Exception as e:
+        print(f"Erro ao enviar email: {e}")
         raise HTTPException(status_code=500, detail=str(e))
