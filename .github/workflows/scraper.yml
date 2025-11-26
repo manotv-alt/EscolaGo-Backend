@@ -30,7 +30,7 @@ jobs:
           REPORT_URL: ${{ secrets.REPORT_URL }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: python main.py
+        run: python scraping/scraping_totais_escola.py
 
       - name: Upload do Relatório de Erros (se houver)
         if: always() # Tenta rodar mesmo se o script Python falhar
