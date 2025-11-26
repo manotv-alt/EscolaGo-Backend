@@ -1,0 +1,41 @@
+name: Scraper Mensal Supabase
+
+on:
+  schedule:
+    # Roda às 06:00 UTC no dia 1 de cada mês
+    - cron: '0 6 1 * *'
+  # Permite rodar manualmente para testar
+  workflow_dispatch:
+
+jobs:
+  run-scraper:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v3
+
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Instalar dependências
+        run: |
+          pip install -r requirements.txt
+
+      - name: Executar Scraper
+        env:
+          FORM_URL: ${{ secrets.FORM_URL }}
+          REPORT_URL: ${{ secrets.REPORT_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python main.py
+
+      - name: Upload do Relatório de Erros (se houver)
+        if: always() # Tenta rodar mesmo se o script Python falhar
+        uses: actions/upload-artifact@v4
+        with:
+          name: erros-extracao
+          path: erros_extracao.json
+          retention-days: 5
