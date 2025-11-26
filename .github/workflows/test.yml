@@ -1,0 +1,30 @@
+name: Teste Conexao Supabase
+
+on:
+  # Permite rodar manualmente a qualquer momento
+  workflow_dispatch:
+
+jobs:
+  test-connection:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v3
+
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Instalar dependências
+        # Usa o mesmo requirements do scraper real
+        run: |
+          pip install -r scraping/requirements.txt
+
+      - name: Rodar Script de Teste
+        env:
+          # Pega as mesmas secrets que você já configurou
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python scraping/test.py
