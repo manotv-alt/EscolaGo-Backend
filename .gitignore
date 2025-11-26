@@ -6,4 +6,4 @@ venv/
 __pycache__/
 
 #Dados brutos
-/scraping/totais_por_escola_2025.csv
+/scraping/*.csv
