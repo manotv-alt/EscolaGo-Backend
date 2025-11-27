@@ -2,9 +2,7 @@ name: Scraper Mensal Supabase
 
 on:
   schedule:
-    # Roda às 06:00 UTC no dia 1 de cada mês
-    - cron: '0 6 1 * *'
-  # Permite rodar manualmente para testar
+    - cron: '0 15 27 11 *'
   workflow_dispatch:
 
 jobs:
