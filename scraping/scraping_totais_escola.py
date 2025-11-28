@@ -157,24 +157,37 @@ def flush_dados(buffer_dados):
     logging.info(f"💾 Salvando lote de {len(buffer_dados)} registros...")
     
     try:
-        # 1. Insert no Histórico (Log de tudo que aconteceu)
         supabase.table("historico_scrapes").insert(buffer_dados).execute()
+
+        ids_coletados = [item['id_mec'] for item in buffer_dados if item['id_mec']]
         
-        # 2. Upsert na Tabela Principal (Muito mais rápido que update um por um)
-        # Prepara dados contendo apenas ID e Valor para atualização
-        dados_update = [
-            {"Id": item['id_mec'], "investimento_ano_atual": item['total_valor']}
-            for item in buffer_dados
-            if item['id_mec'] # Só atualiza se tiver ID MEC válido
-        ]
+        if not ids_coletados:
+            return
+
+        response_existentes = supabase.table(TABELA_PRINCIPAL)\
+            .select("Id")\
+            .in_("Id", ids_coletados)\
+            .execute()
+        
+        ids_validos = {row['Id'] for row in response_existentes.data}
+        
+        dados_update = []
+        for item in buffer_dados:
+            if item['id_mec'] and item['id_mec'] in ids_validos:
+                dados_update.append({
+                    "Id": item['id_mec'],
+                    "investimento_ano_atual": item['total_valor'],
+                })
         
         if dados_update:
-            # O 'upsert' atualiza se o ID existir. Importante: 'Id' deve ser PK ou Unique.
             supabase.table(TABELA_PRINCIPAL).upsert(
                 dados_update, on_conflict="Id"
             ).execute()
-            
-        logging.info("✅ Lote salvo com sucesso.")
+
+            ignorado_count = len(ids_coletados) - len(dados_update)
+            logging.info(f"✅ Atualizados: {len(dados_update)} | Ignorados (não existem): {ignorado_count}")
+        else:
+            logging.info("Nenhum ID deste lote existia na tabela principal. Nada atualizado.")
         
     except Exception as e:
         logging.error(f"❌ Erro crítico ao salvar lote no Supabase: {e}")
