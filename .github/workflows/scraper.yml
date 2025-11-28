@@ -2,7 +2,7 @@ name: Scraper Mensal Supabase
 
 on:
   schedule:
-    - cron: '0 15 27 11 *'
+    - cron: '0 15 15 * *'
   workflow_dispatch:
 
 jobs:
