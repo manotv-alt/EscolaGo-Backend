@@ -1,0 +1,17 @@
+name: Maintain DB ON
+
+on:
+  # Permite rodar manualmente a qualquer momento
+  workflow_dispatch:
+  schedule:
+    # Roda todo domingo à meia-noite UTC
+    - cron: '0 0 * * 0'
+
+jobs:
+  test-connection:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase
+        run: echo "Pinging database to keep it active" && psql "$SUPABASE_DB_URL" -c "SELECT 1;"
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_URL }}
