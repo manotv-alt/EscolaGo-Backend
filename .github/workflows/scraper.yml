@@ -36,4 +36,5 @@ jobs:
         with:
           name: erros-extracao
           path: erros_extracao.json
+          if-no-files-found: ignore
           retention-days: 5

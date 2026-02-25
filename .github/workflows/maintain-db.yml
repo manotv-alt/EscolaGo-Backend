@@ -12,6 +12,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping Supabase
-        run: echo "Pinging database to keep it active" && psql "$SUPABASE_DB_URL" -c "SELECT 1;"
         env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          echo "Pinging Supabase API to keep project active..."
+          curl -s -X GET "${SUPABASE_URL}/rest/v1/" \
+            -H "apikey: ${SUPABASE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_KEY}"
