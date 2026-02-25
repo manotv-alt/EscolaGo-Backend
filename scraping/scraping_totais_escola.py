@@ -3,6 +3,8 @@ import time
 import logging
 import locale
 import json
+import sys
+import urllib3
 from datetime import datetime
 from dotenv import load_dotenv
 from supabase import create_client, Client
@@ -27,6 +29,7 @@ REPORT_URL = os.environ.get("REPORT_URL")
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 TABELA_PRINCIPAL = "DadosEscolas"
+TABELA_TOTAIS = "DadosTotais"
 
 BATCH_SIZE = 50
 ANO_ATUAL = str(datetime.now().year)
@@ -39,6 +42,8 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def get_session():
     session = requests.Session()
+    session.verify = False
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
     session.headers.update({
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     })
@@ -192,6 +197,60 @@ def flush_dados(buffer_dados):
     except Exception as e:
         logging.error(f"❌ Erro crítico ao salvar lote no Supabase: {e}")
 
+# --- Atualiza Total Geral ---
+
+def atualizar_total_geral():
+    logging.info("🔄 Calculando Total Geral de Investimentos...")
+    try:
+        total_acumulado = 0.0
+        start = 0
+        limit = 1000
+        
+        while True:
+            response = supabase.table(TABELA_PRINCIPAL)\
+                .select("investimento_ano_atual")\
+                .range(start, start + limit - 1)\
+                .execute()
+            
+            rows = response.data
+            if not rows:
+                break
+                
+            soma_parcial = sum(r['investimento_ano_atual'] for r in rows if r.get('investimento_ano_atual'))
+            total_acumulado += soma_parcial
+            
+            if len(rows) < limit:
+                break
+            start += limit
+
+        logging.info(f"💰 Total Calculado: R$ {total_acumulado:,.2f}")
+
+        res_totais = supabase.table(TABELA_TOTAIS).select("*").limit(1).execute()
+        
+        if res_totais.data:
+            primeira_linha = res_totais.data[0]
+            pk_col = "Id" if "Id" in primeira_linha else "id"
+            primeira_linha = res_totais.data[0]
+            pk_col = "Id" if "Id" in primeira_linha else "id"
+            pk_val = primeira_linha.get(pk_col)
+
+            if pk_val:
+                supabase.table(TABELA_TOTAIS).update({
+                    "Investimento": total_acumulado
+                }).eq(pk_col, pk_val).execute()
+                logging.info(f"✅ Tabela {TABELA_TOTAIS} atualizada com sucesso.")
+            else:
+                 logging.warning(f"⚠️ Erro: Não encontrei coluna 'Id' ou 'id' em {TABELA_TOTAIS}.")
+        else:
+            # Tabela vazia? Cria a primeira linha.
+            supabase.table(TABELA_TOTAIS).insert({
+                "Investimento": total_acumulado
+            }).execute()
+            logging.info(f"✅ Linha criada em {TABELA_TOTAIS}.")
+
+    except Exception as e:
+        logging.error(f"❌ Erro ao atualizar Total Geral: {e}")
+
 # --- Loop Principal ---
 
 def main():
@@ -201,57 +260,74 @@ def main():
     lista_erros = []
     total_processado = 0
     
-    html_ini = fetch_content(FORM_URL)
-    regionais = get_options('cmbSubsecretaria', html_ini)
-
-    for regional in regionais:
-        logging.info(f"📍 Regional: {regional['text']}")
-        
-        html_mun = fetch_content(FORM_URL, {'cmbSubsecretaria': regional['value']})
-        municipios = get_options('cmbMunicipio', html_mun)
-
-        for municipio in municipios:
-            logging.info(f"  🏙️ Município: {municipio['text']}")
+    try:
+        html_ini = fetch_content(FORM_URL)
+        if not html_ini:
+            raise Exception("Falha crítica ao acessar a página inicial. O scraping será interrompido.")
             
-            html_esc = fetch_content(FORM_URL, {
-                'cmbSubsecretaria': regional['value'],
-                'cmbMunicipio': municipio['value']
-            })
-            escolas = get_options('cmbUnidadeEnsino', html_esc)
+        regionais = get_options('cmbSubsecretaria', html_ini)
 
-            for escola in escolas:
-                # Processa escola individualmente
-                dados, erro = processar_escola(regional, municipio, escola)
+        for regional in regionais:
+            logging.info(f"📍 Regional: {regional['text']}")
+            
+            html_mun = fetch_content(FORM_URL, {'cmbSubsecretaria': regional['value']})
+            municipios = get_options('cmbMunicipio', html_mun)
+
+            for municipio in municipios:
+                logging.info(f"  🏙️ Município: {municipio['text']}")
                 
-                if dados:
-                    buffer_dados.append(dados)
-                    logging.info(f"    -> {dados['nome_escola'][:30]}... : R$ {dados['total_valor']}")
-                    total_processado += 1
-                elif erro:
-                    lista_erros.append(erro)
-                    logging.error(f"    ❌ Erro em {escola['text']}")
+                html_esc = fetch_content(FORM_URL, {
+                    'cmbSubsecretaria': regional['value'],
+                    'cmbMunicipio': municipio['value']
+                })
+                escolas = get_options('cmbUnidadeEnsino', html_esc)
 
-                # FLUSH: Se o buffer encher (50 itens), salva no banco e limpa memória
-                if len(buffer_dados) >= BATCH_SIZE:
-                    flush_dados(buffer_dados)
-                    buffer_dados = [] # Limpa buffer
-                
-                # Delay reduzido pois agora temos retries e batch saving
-                time.sleep(0.1)
+                for escola in escolas:
+                    # Processa escola individualmente
+                    dados, erro = processar_escola(regional, municipio, escola)
+                    
+                    if dados:
+                        buffer_dados.append(dados)
+                        logging.info(f"    -> {dados['nome_escola'][:30]}... : R$ {dados['total_valor']}")
+                        total_processado += 1
+                    elif erro:
+                        lista_erros.append(erro)
+                        logging.error(f"    ❌ Erro em {escola['text']}")
 
-    # Flush final (salva o que sobrou no buffer)
-    if buffer_dados:
-        flush_dados(buffer_dados)
+                    # FLUSH: Se o buffer encher (50 itens), salva no banco e limpa memória
+                    if len(buffer_dados) >= BATCH_SIZE:
+                        flush_dados(buffer_dados)
+                        buffer_dados = [] # Limpa buffer
+                    
+                    # Delay reduzido pois agora temos retries e batch saving
+                    time.sleep(0.1)
+
+        # Flush final (salva o que sobrou no buffer)
+        if buffer_dados:
+            flush_dados(buffer_dados)
+
+        atualizar_total_geral()
+
+    except Exception as e:
+        erro_critico = {
+            "escola": "N/A (Falha Crítica)",
+            "id_interno": "N/A",
+            "erro": str(e),
+            "data": datetime.now().isoformat()
+        }
+        lista_erros.append(erro_critico)
+        logging.error(f"❌ Erro crítico no processo de scraping: {e}")
 
     # Relatório de Erros
     if lista_erros:
         logging.warning(f"⚠️ Processo finalizado com {len(lista_erros)} erros.")
         with open('erros_extracao.json', 'w', encoding='utf-8') as f:
             json.dump(lista_erros, f, ensure_ascii=False, indent=2)
+        logging.info(f"📊 Total de registros processados: {total_processado}")
+        sys.exit(1) # Falha a action do GitHub se houver erros
     else:
         logging.info("✨ Processo finalizado com SUCESSO ABSOLUTO!")
-    
-    logging.info(f"📊 Total de registros processados: {total_processado}")
+        logging.info(f"📊 Total de registros processados: {total_processado}")
 
 if __name__ == "__main__":
     main()
