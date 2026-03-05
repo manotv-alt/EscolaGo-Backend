@@ -4,8 +4,8 @@ on:
   # Permite rodar manualmente a qualquer momento
   workflow_dispatch:
   schedule:
-    # Roda todo domingo à meia-noite UTC
-    - cron: '0 0 * * 0'
+    # Roda todo dia ao meio-dia (Horário de Brasília) / 15:00 UTC
+    - cron: '0 15 * * *'
 
 jobs:
   test-connection:
